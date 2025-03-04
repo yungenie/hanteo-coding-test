@@ -14,9 +14,7 @@ public class CategoryRepositoryImpl implements CategoryRepository {
 
     public CategoryRepositoryImpl() {
         this.root = new Category(0L, "루트");
-        //this.searchByCategoryIdMap = new HashMap<>();
         this.searchByCategoryIdMap = new ConcurrentHashMap<>();
-        //this.searchByCategoryNameMap = new HashMap<>();
         this.searchByCategoryNameMap = new ConcurrentHashMap<>();
         searchByCategoryIdMap.put(0L, root);
         idGenerator = new AtomicLong(0);
@@ -30,7 +28,6 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     @Override
     public void saveCategory(Category category) {
         searchByCategoryIdMap.put(category.getCategoryId(), category);
-        //searchByCategoryNameMap.computeIfAbsent(category.getCategoryName(), k -> new HashSet<>()).add(category);
         searchByCategoryNameMap
                 .computeIfAbsent(category.getCategoryName(), k -> ConcurrentHashMap.newKeySet())
                 .add(category);

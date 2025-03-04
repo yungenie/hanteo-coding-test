@@ -39,7 +39,6 @@ public class CategoryServiceImpl implements CategoryService {
         return gson.toJson(category != null ? category : Map.of("message", "검색 결과 없음"));
     }
 
-
     @Override
     public String findByCategoryName(String categoryName) {
         List<Category> categoryList = categoryRepository.findByCategoryName(categoryName);
