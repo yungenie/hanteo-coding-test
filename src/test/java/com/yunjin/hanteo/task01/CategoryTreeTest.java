@@ -14,10 +14,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Type;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.function.Function;
 
 class CategoryTreeTest {
     private CategoryService categoryService;
@@ -27,7 +29,6 @@ class CategoryTreeTest {
     @DisplayName("초기 데이터 세팅")
     void setUp() {
         categoryService = new CategoryServiceImpl(new CategoryRepositoryImpl());
-
         categoryService.addCategory(null, 0L, "루트");
         categoryService.addCategory(List.of(0L), 100L, "남자");
         categoryService.addCategory(List.of(100L), 101L, "엑소");
@@ -43,22 +44,43 @@ class CategoryTreeTest {
         categoryService.addCategory(List.of(201L), 8L, "공지사항");
         categoryService.addCategory(List.of(201L), 9L, "로제");
         categoryService.addCategory(List.of(102L, 201L), 6L, "익명게시판");
-
     }
 
+    /**
+     * 재귀적으로 모든 카테고리의 속성을 수집하는 메서드
+     * @param category : 현재 탐색 중인 카테고리
+     * @param collector : 수집할 데이터를 저장할 Set (ID 또는 Name)
+     * @param mapper : Category 객체에서 원하는 속성을 추출하는 함수 (람다)
+     */
+    private <T> void collectCategoryAttributes(Category category, Set<T> collector, Function<Category, T> mapper) {
+        if (category == null) return;
+        for (Category child : category.getChildCategories()) {
+            collector.add(mapper.apply(child)); // 지정된 속성 추출 후 추가
+            collectCategoryAttributes(child, collector, mapper); // 재귀 탐색
+        }
+    }
 
     @Test
     @DisplayName("카테고리 ID - 전체 검색")
     void findAllByCategoryId() {
         String jsonResult = categoryService.findByCategoryId(0L);
-        assertThat(jsonResult).isNotNull();
-
         Category category = gson.fromJson(jsonResult, Category.class);
+
+        // 검색 결과 검증
         assertThat(category).isNotNull();
         assertThat(category.getCategoryId()).isEqualTo(0L);
         assertThat(category.getCategoryName()).isEqualTo("루트");
 
-        // todo 하위 모두 확인 검증 코드 넣어야 하는지?
+        // 하위 카테고리 포함 검증
+        Set<Long> expectedCategoryIds = Set.of(
+                100L, 101L, 1L, 2L, 3L, 4L,
+                102L, 5L, 7L, 6L,
+                200L, 201L, 8L, 9L
+        );
+        Set<Long> actualCategoryIds = new HashSet<>();
+        collectCategoryAttributes(category, actualCategoryIds, Category::getCategoryId);
+
+        assertThat(actualCategoryIds).containsExactlyInAnyOrderElementsOf(expectedCategoryIds);
 
         System.out.println(jsonResult);
     }
@@ -67,16 +89,19 @@ class CategoryTreeTest {
     @DisplayName("카테고리 ID - 단일 검색 (엑소)")
     void findOneByCategoryId_Exo() {
         String jsonResult = categoryService.findByCategoryId(101L);
-        assertThat(jsonResult).isNotNull();
-
         Category category = gson.fromJson(jsonResult, Category.class);
+
+        // 검색 결과 검증
         assertThat(category).isNotNull();
+        assertThat(category.getCategoryId()).isEqualTo(101L);
         assertThat(category.getCategoryName()).isEqualTo("엑소");
 
-        List<String> childCategoryNames = category.getChildCategories().stream()
-                .map(Category::getCategoryName)
-                .toList();
-        assertThat(childCategoryNames).containsExactlyInAnyOrder("공지사항", "첸", "백현", "시우민");
+        // 하위 카테고리 포함 검증
+        Set<Long> expectedCategoryIds = Set.of(1L, 2L, 3L, 4L);
+        Set<Long> actualCategoryIds = new HashSet<>();
+        collectCategoryAttributes(category, actualCategoryIds, Category::getCategoryId);
+
+        assertThat(actualCategoryIds).containsExactlyInAnyOrderElementsOf(expectedCategoryIds);
 
         System.out.println(jsonResult);
     }
@@ -85,18 +110,19 @@ class CategoryTreeTest {
     @DisplayName("카테고리 ID 검색 - 단일 검색 (여자)")
     void findOneByCategoryId_Women() {
         String jsonResult = categoryService.findByCategoryId(200L);
-        assertThat(jsonResult).isNotNull();
-
         Category category = gson.fromJson(jsonResult, Category.class);
+
+        // 검색 결과 검증
         assertThat(category).isNotNull();
+        assertThat(category.getCategoryId()).isEqualTo(200L);
         assertThat(category.getCategoryName()).isEqualTo("여자");
 
-        List<String> childCategoryNames = category.getChildCategories().stream()
-                .map(Category::getCategoryName)
-                .toList();
-        assertThat(childCategoryNames).containsExactlyInAnyOrder("블랙핑크");
+        // 하위 카테고리 포함 검증
+        Set<Long> expectedCategoryIds = Set.of(201L, 8L, 6L, 9L);
+        Set<Long> actualCategoryIds = new HashSet<>();
+        collectCategoryAttributes(category, actualCategoryIds, Category::getCategoryId);
 
-        // todo 하위 모두 확인 검증 코드 넣어야 하는지?
+        assertThat(actualCategoryIds).containsExactlyInAnyOrderElementsOf(expectedCategoryIds);
 
         System.out.println(jsonResult);
     }
@@ -105,9 +131,9 @@ class CategoryTreeTest {
     @DisplayName("카테고리 ID 검색 - 단일 검색 (로제)")
     void findOneByCategoryId_Rose() {
         String jsonResult = categoryService.findByCategoryId(9L);
-        assertThat(jsonResult).isNotNull();
-
         Category category = gson.fromJson(jsonResult, Category.class);
+
+        // 검색 결과 검증
         assertThat(category).isNotNull();
         assertThat(category.getCategoryId()).isEqualTo(9L);
         assertThat(category.getCategoryName()).isEqualTo("로제");
@@ -119,62 +145,93 @@ class CategoryTreeTest {
     @DisplayName("카테고리 ID 검색 - 단일 검색 (익명게시판)")
     void findOneByCategoryId_AnonymousBoard() {
         String jsonResult = categoryService.findByCategoryId(6L);
-        assertThat(jsonResult).isNotNull();
-
         Category category = gson.fromJson(jsonResult, Category.class);
+
+        // 검색 결과 검증
         assertThat(category).isNotNull();
         assertThat(category.getCategoryId()).isEqualTo(6L);
         assertThat(category.getCategoryName()).isEqualTo("익명게시판");
+
+        System.out.println(jsonResult);
     }
 
     @Test
     @DisplayName("카테고리 ID - 전체 검색 (존재하지 않는 카테고리)")
     void findAllByCategoryId_IsNotFound() {
         String jsonResult = categoryService.findByCategoryId(777777L);
-
         Type type = new TypeToken<Map<String, String>>() {}.getType();
         Map<String, String> resultMap = gson.fromJson(jsonResult, type);
 
+        // 검색 결과 검증
         assertThat(resultMap).containsEntry("message", "검색 결과 없음");
+
+        System.out.println(jsonResult);
     }
 
     @Test
-    @DisplayName("카테고리명 검색 - 전체 조회 (공지사항) ")
-    void findAllByCategoryName_Notice() {
-        String jsonResult = categoryService.findByCategoryName("공지사항");
-        assertThat(jsonResult).isNotNull();
-        System.out.println(jsonResult);
+    @DisplayName("카테고리명 검색 - 단일 검색 (방탄소년단) ")
+    void findAllByCategoryName_Bts() {
+        String jsonResult = categoryService.findByCategoryName("방탄소년단");
 
         Type listType = new TypeToken<List<Category>>() {}.getType();
         List<Category> categories = gson.fromJson(jsonResult, listType);
 
+        // 검색 결과 검증
+        assertThat(categories).hasSize(1);
+        assertThat(categories).extracting(Category::getCategoryName).containsExactly("방탄소년단");
+
+        // 하위 카테고리 포함 검증
+        Set<String> expectedCategoryNames = Set.of("공지사항", "익명게시판", "뷔");
+        Set<String> actualCategoryNames = new HashSet<>();
+
+        for (Category category : categories) {
+            collectCategoryAttributes(category, actualCategoryNames, Category::getCategoryName);
+        }
+
+        assertThat(actualCategoryNames).containsExactlyInAnyOrderElementsOf(expectedCategoryNames);
+
+        System.out.println(jsonResult);
+    }
+
+    @Test
+    @DisplayName("카테고리명 검색 - 전체 검색 (공지사항) ")
+    void findAllByCategoryName_Notice() {
+        String jsonResult = categoryService.findByCategoryName("공지사항");
+        Type listType = new TypeToken<List<Category>>() {}.getType();
+        List<Category> categories = gson.fromJson(jsonResult, listType);
+
+        // 검색 결과 검증
         assertThat(categories).hasSize(3);
         assertThat(categories).allMatch(category -> category.getCategoryName().equals("공지사항"));
+
+        System.out.println(jsonResult);
     }
 
     @Test
     @DisplayName("카테고리명 검색 - 단일 검색 (익명게시판이 오직 1개로 검색되는지 검증)")
     void findOneByCategoryName_AnonymousIsOnlyOne() {
         String jsonResult = categoryService.findByCategoryName("익명게시판");
-        assertThat(jsonResult).isNotNull();
-
         Type listType = new TypeToken<List<Category>>() {}.getType();
         List<Category> categories = gson.fromJson(jsonResult, listType);
 
+        // 검색 결과 검증
         assertThat(categories).hasSize(1);
         assertThat(categories.getFirst().getCategoryName()).isEqualTo("익명게시판");
+
+        System.out.println(jsonResult);
     }
 
     @Test
     @DisplayName("카테고리명 검색 - 전체 검색 (존재하지 않는 카테고리)")
     void findAllByCategoryName_IsNotFound() {
         String jsonResult = categoryService.findByCategoryName("제니");
-        System.out.println(jsonResult);
-
         Type listType = new TypeToken<List<Category>>() {}.getType();
         List<Category> categories = gson.fromJson(jsonResult, listType);
 
+        // 검색 결과 검증
         assertThat(categories).hasSize(0);
+
+        System.out.println(jsonResult);
     }
 
     @Test
